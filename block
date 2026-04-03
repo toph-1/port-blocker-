@@ -1,248 +1,138 @@
 sudo bash << 'EOF'
-set -e
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-
-apt-get update -qq
-apt-get install -y iptables iptables-persistent netfilter-persistent > /dev/null 2>&1
-
 cat > /usr/local/bin/portblock << 'SCRIPT'
 #!/bin/bash
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-BACKUP_DIR="/etc/portblock-backups"
-mkdir -p $BACKUP_DIR
-
-create_backup() {
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    iptables-save > "$BACKUP_DIR/rules_$timestamp"
-    echo -e "${GREEN}✓ Auto-backup created${NC}"
-}
-
-show_menu() {
+while true; do
     clear
-    echo -e "${BLUE}════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}        SIMPLE PORT BLOCKING TOOL${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}════════════════════════════════════════${NC}"
+    echo -e "${GREEN}        PORT BLOCKING TOOL${NC}"
+    echo -e "${BLUE}════════════════════════════════════════${NC}"
     echo ""
-    echo -e "${YELLOW}┌─────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│  QUICK ACTIONS                           │${NC}"
-    echo -e "${YELLOW}├─────────────────────────────────────────┤${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}1)${NC} 🔒 CUT ALL outside connections (RECOMMENDED)${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}2)${NC} 🔓 OPEN everything back up              ${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}3)${NC} 🚫 Block specific port                   ${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}4)${NC} 🔓 Unblock specific port                 ${YELLOW}│${NC}"
-    echo -e "${YELLOW}├─────────────────────────────────────────┤${NC}"
-    echo -e "${YELLOW}│  OTHER                                  │${NC}"
-    echo -e "${YELLOW}├─────────────────────────────────────────┤${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}5)${NC} 📋 Show current rules                    ${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}6)${NC} 💾 Save rules (survive reboot)          ${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}7)${NC} ↩️  REVERT to last saved                ${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} ${GREEN}8)${NC} 🔄 Complete RESET                       ${YELLOW}│${NC}"
-    echo -e "${YELLOW}├─────────────────────────────────────────┤${NC}"
-    echo -e "${YELLOW}│${NC} ${RED}0)${NC} 🚪 Exit                                 ${YELLOW}│${NC}"
-    echo -e "${YELLOW}└─────────────────────────────────────────┘${NC}"
+    echo -e "${YELLOW}1)${NC} 🔒 BLOCK all outside connections"
+    echo -e "${YELLOW}2)${NC} 🔓 OPEN all connections"
+    echo -e "${YELLOW}3)${NC} 🚫 Block a specific port"
+    echo -e "${YELLOW}4)${NC} ✅ Unblock a specific port"
+    echo -e "${YELLOW}5)${NC} 📋 Show current status"
+    echo -e "${YELLOW}6)${NC} 💾 Save rules (survive reboot)"
+    echo -e "${YELLOW}7)${NC} 🔄 Complete reset"
+    echo -e "${YELLOW}8)${NC} 🚪 Exit"
     echo ""
-    echo -e "${BLUE}💡 Your computer can still:${NC}"
-    echo "   • Browse the internet (outgoing connections work)"
-    echo "   • Run local apps and services"
-    echo "   • Talk to itself (localhost)"
-    echo "   • Nothing from outside can reach in"
-    echo ""
-}
+    echo -e "${BLUE}════════════════════════════════════════${NC}"
+    read -p "Choose (1-8): " choice
 
-cut_all_outside() {
-    create_backup
-    echo -e "${YELLOW}🔒 Cutting ALL outside connections...${NC}"
-    echo ""
-    
-    # Set default policy to DROP for incoming
-    iptables -P INPUT DROP
-    
-    # Allow everything that comes from your own computer
-    iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-    
-    # Allow localhost (computer talking to itself)
-    iptables -A INPUT -i lo -j ACCEPT
-    
-    # Allow outgoing connections (browsing, etc.)
-    iptables -P OUTPUT ACCEPT
-    
-    echo -e "${GREEN}✓ DONE!${NC}"
-    echo ""
-    echo -e "${GREEN}✅ What's ALLOWED (works normally):${NC}"
-    echo "   • Web browsing (Chrome, Firefox, curl, wget)"
-    echo "   • Downloads"
-    echo "   • Online games (outgoing)"
-    echo "   • Email clients"
-    echo "   • All apps on your computer"
-    echo "   • Local services (localhost)"
-    echo ""
-    echo -e "${RED}❌ What's BLOCKED:${NC}"
-    echo "   • Anyone trying to connect to your computer from outside"
-    echo "   • Port scanners"
-    echo "   • Hackers trying to access your services"
-    echo "   • Incoming SSH, web server requests, etc."
-    echo ""
-    echo -e "${YELLOW}⚠ Note: Your current session stays active${NC}"
-    echo -e "${YELLOW}⚠ To undo: choose option 2 or type 'portblock open-all'${NC}"
-    echo ""
-    read -p "Press Enter to continue..."
-}
-
-open_everything() {
-    create_backup
-    iptables -P INPUT ACCEPT
-    iptables -F INPUT
-    echo -e "${GREEN}✓ Everything is OPEN - Outside connections allowed again${NC}"
-    sleep 2
-}
-
-block_specific_port() {
-    echo -e "${BLUE}Common ports:${NC}"
-    echo "  22  - SSH"
-    echo "  80  - HTTP (web server)"
-    echo "  443 - HTTPS (web server)"
-    echo "  53  - DNS"
-    echo "  3306 - MySQL"
-    echo "  5432 - PostgreSQL"
-    echo "  8080 - Proxy"
-    echo ""
-    read -p "Enter port number to BLOCK: " port
-    if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
-        create_backup
-        iptables -A INPUT -p tcp --dport $port -j DROP
-        iptables -A INPUT -p udp --dport $port -j DROP
-        echo -e "${GREEN}✓ Port $port is now BLOCKED from outside${NC}"
-    else
-        echo -e "${RED}Invalid port number${NC}"
-    fi
-    sleep 2
-}
-
-unblock_specific_port() {
-    read -p "Enter port number to UNBLOCK: " port
-    if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
-        create_backup
-        iptables -D INPUT -p tcp --dport $port -j DROP 2>/dev/null
-        iptables -D INPUT -p udp --dport $port -j DROP 2>/dev/null
-        echo -e "${GREEN}✓ Port $port UNBLOCKED (if it was blocked)${NC}"
-    else
-        echo -e "${RED}Invalid port number${NC}"
-    fi
-    sleep 2
-}
-
-show_rules() {
-    clear
-    echo -e "${GREEN}════════════════════════════════════════${NC}"
-    echo -e "${BLUE}Current Blocking Rules${NC}"
-    echo -e "${GREEN}════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${YELLOW}Default Policies:${NC}"
-    echo -n "  INPUT:   "; iptables -L INPUT | head -1 | grep -o "policy [A-Z]*"
-    echo -n "  OUTPUT:  "; iptables -L OUTPUT | head -1 | grep -o "policy [A-Z]*"
-    echo ""
-    echo -e "${YELLOW}INCOMING Rules (what's blocked):${NC}"
-    iptables -L INPUT -n -v --line-numbers | grep DROP | head -20
-    if [ $(iptables -L INPUT -n | grep DROP | wc -l) -eq 0 ]; then
-        echo "  No specific port blocks"
-    fi
-    echo ""
-    echo -e "${YELLOW}Connections currently allowed (established):${NC}"
-    iptables -L INPUT -n -v | grep ESTABLISHED
-    echo ""
-    read -p "Press Enter to continue..."
-}
-
-save_rules() {
-    create_backup
-    netfilter-persistent save 2>/dev/null || iptables-save > /etc/iptables/rules.v4
-    echo -e "${GREEN}✓ Rules saved! They will survive reboot${NC}"
-    sleep 1
-}
-
-revert_to_saved() {
-    if [ -f /etc/iptables/rules.v4 ]; then
-        create_backup
-        iptables-restore < /etc/iptables/rules.v4
-        echo -e "${GREEN}✓ Reverted to last saved rules${NC}"
-    else
-        echo -e "${RED}No saved rules found${NC}"
-    fi
-    sleep 1
-}
-
-complete_reset() {
-    echo -e "${RED}⚠⚠⚠ WARNING ⚠⚠⚠${NC}"
-    echo "This will REMOVE ALL blocks and restore default settings"
-    read -p "Type 'RESET' to confirm: " confirm
-    if [ "$confirm" = "RESET" ]; then
-        create_backup
-        iptables -P INPUT ACCEPT
-        iptables -P FORWARD ACCEPT
-        iptables -P OUTPUT ACCEPT
-        iptables -F
-        iptables -X
-        echo -e "${GREEN}✓ COMPLETE RESET! All ports are now OPEN${NC}"
-    else
-        echo "Cancelled"
-    fi
-    sleep 1
-}
-
-# Command line shortcuts
-case "$1" in
-    cut-all|lock-down|secure)
-        cut_all_outside
-        ;;
-    open-all|unlock)
-        open_everything
-        ;;
-    reset)
-        complete_reset
-        ;;
-    save)
-        save_rules
-        ;;
-    list|show)
-        show_rules
-        ;;
-    revert)
-        revert_to_saved
-        ;;
-    menu|"")
-        while true; do
-            show_menu
-            read -p "Choose an option (0-8): " choice
-            case $choice in
-                1) cut_all_outside ;;
-                2) open_everything ;;
-                3) block_specific_port ;;
-                4) unblock_specific_port ;;
-                5) show_rules ;;
-                6) save_rules ;;
-                7) revert_to_saved ;;
-                8) complete_reset ;;
-                0) echo -e "${GREEN}Goodbye!${NC}"; exit 0 ;;
-                *) echo -e "${RED}Invalid option${NC}"; sleep 1 ;;
-            esac
-        done
-        ;;
-    *)
-        echo "Usage: portblock [command]"
-        echo ""
-        echo "Commands:"
-        echo "  portblock cut-all     - 🔒 BLOCK all outside connections (your computer still works)"
-        echo "  portblock open-all    - 🔓 OPEN everything back up"
-        echo "  portblock menu        - Show interactive menu"
-        echo "  portblock save        - Save current rules"
-        echo "  portblock list        - Show current rules"
-        echo "  portblock reset       - Complete reset"
-        echo "  portblock revert      - Revert to last saved"
-        echo ""
-        echo "Or just type 'portblock' for the menu"
-        ;;
-esac
+    case $choice in
+        1)
+            echo ""
+            echo "🔒 Blocking ALL outside connections..."
+            sudo iptables -P INPUT DROP
+            sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+            sudo iptables -A INPUT -i lo -j ACCEPT
+            echo -e "${GREEN}✓ DONE! Outside connections blocked${NC}"
+            echo "  Your computer can still browse the internet"
+            echo "  Only incoming connections from outside are blocked"
+            sleep 2
+            ;;
+        2)
+            echo ""
+            echo "🔓 Opening all connections..."
+            sudo iptables -P INPUT ACCEPT
+            sudo iptables -F INPUT
+            echo -e "${GREEN}✓ DONE! All connections allowed${NC}"
+            sleep 2
+            ;;
+        3)
+            echo ""
+            echo -e "${BLUE}Common ports:${NC}"
+            echo "  22  - SSH"
+            echo "  80  - HTTP (web)"
+            echo "  443 - HTTPS (web)"
+            echo "  53  - DNS"
+            echo "  3306 - MySQL"
+            echo "  5432 - PostgreSQL"
+            echo "  8080 - Proxy"
+            echo ""
+            read -p "Enter port number to BLOCK: " port
+            if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+                sudo iptables -A INPUT -p tcp --dport $port -j DROP
+                sudo iptables -A INPUT -p udp --dport $port -j DROP
+                echo -e "${GREEN}✓ Port $port is now BLOCKED${NC}"
+            else
+                echo -e "${RED}Invalid port number${NC}"
+            fi
+            sleep 2
+            ;;
+        4)
+            echo ""
+            read -p "Enter port number to UNBLOCK: " port
+            if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+                sudo iptables -D INPUT -p tcp --dport $port -j DROP 2>/dev/null
+                sudo iptables -D INPUT -p udp --dport $port -j DROP 2>/dev/null
+                echo -e "${GREEN}✓ Port $port UNBLOCKED (if it was blocked)${NC}"
+            else
+                echo -e "${RED}Invalid port number${NC}"
+            fi
+            sleep 2
+            ;;
+        5)
+            clear
+            echo -e "${GREEN}════════════════════════════════════════${NC}"
+            echo -e "${BLUE}CURRENT STATUS${NC}"
+            echo -e "${GREEN}════════════════════════════════════════${NC}"
+            echo ""
+            echo -e "${YELLOW}Default Policy:${NC}"
+            sudo iptables -L INPUT | head -1
+            echo ""
+            echo -e "${YELLOW}Blocked Ports:${NC}"
+            sudo iptables -L INPUT -n | grep DROP
+            if [ $(sudo iptables -L INPUT -n | grep DROP | wc -l) -eq 0 ]; then
+                echo "  No ports blocked"
+            fi
+            echo ""
+            echo -e "${YELLOW}What's Allowed:${NC}"
+            echo "  • Established connections (your browsing, downloads)"
+            echo "  • Localhost (computer talking to itself)"
+            echo ""
+            read -p "Press Enter to continue..."
+            ;;
+        6)
+            echo ""
+            echo "💾 Saving rules..."
+            sudo apt-get install -y iptables-persistent > /dev/null 2>&1
+            sudo netfilter-persistent save
+            echo -e "${GREEN}✓ Rules saved! They will survive reboot${NC}"
+            sleep 2
+            ;;
+        7)
+            echo ""
+            echo -e "${RED}⚠ WARNING: This will remove ALL blocks${NC}"
+            read -p "Type 'yes' to confirm: " confirm
+            if [ "$confirm" = "yes" ]; then
+                sudo iptables -P INPUT ACCEPT
+                sudo iptables -P OUTPUT ACCEPT
+                sudo iptables -P FORWARD ACCEPT
+                sudo iptables -F
+                sudo iptables -X
+                echo -e "${GREEN}✓ Complete reset! All ports are OPEN${NC}"
+            else
+                echo "Cancelled"
+            fi
+            sleep 2
+            ;;
+        8)
+            echo -e "${GREEN}Goodbye!${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option${NC}"
+            sleep 1
+            ;;
+    esac
+done
 SCRIPT
 
 chmod +x /usr/local/bin/portblock
@@ -250,12 +140,6 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}✓ INSTALLATION COMPLETE!${NC}"
 echo -e "${GREEN}════════════════════════════════════════${NC}"
 echo ""
-echo -e "${YELLOW}Just type: ${GREEN}portblock${NC} or ${GREEN}portblock cut-all${NC}"
-echo ""
-echo -e "${BLUE}What this does:${NC}"
-echo "  • Blocks EVERYTHING coming from outside"
-echo "  • Your computer can STILL browse internet, use apps"
-echo "  • Localhost and internal stuff keeps working"
-echo "  • One command to lock it down, one to open up"
+echo -e "${YELLOW}Just type: ${GREEN}portblock${NC}"
 echo ""
 EOF
